@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <h2>🧠 Emotion Quiz</h2>
+
+  <p><strong>{{ question.text }}</strong></p>
+
+  {% if question.image %}
+    <img src="{{ url_for('static', filename=question.image) }}" alt="Question Image" class="quiz-img" style="max-width: 200px; border-radius: 12px;">
+  {% endif %}
+
+  {% if question.audio %}
+    <audio controls>
+      <source src="{{ url_for('static', filename=question.audio) }}" type="audio/mpeg">
+    </audio>
+  {% endif %}
+
+  <div style="margin: 20px 0;">
+    <button class="audio-btn" onclick="startGestureMode()">👋 Start Gesture Mode</button>
+    <button class="audio-btn" onclick="stopGestureMode()">🛑 Stop Gesture Mode</button>
+  </div>
+
+  <div id="gesture-area" style="display: none;">
+    <video id="input_video" autoplay playsinline muted width="640" height="480" style="border-radius: 12px; box-shadow: 0 0 8px #ccc;"></video>
+    <canvas class="output_canvas" id="output_canvas" width="640" height="480" style="border-radius: 12px; box-shadow: 0 0 8px #ccc; margin-top: 10px;"></canvas>
+    <p id="detected-gesture" style="font-size: 1.2em; color: green; margin-top: 10px;"></p>
+  </div>
+
+  <div class="option-grid" style="margin-top: 20px;">
+    {% for opt in question.options %}
+      <button class="option-btn" onclick="checkAnswer('{{ opt }}')">{{ opt }}</button>
+    {% endfor %}
+  </div>
+
+  <p id="result" class="result-text" style="margin-top: 15px;"></p>
+  <p>Stars Collected: 🌟 {{ score }}</p>
+
+  {% if score >= 5 %}
+    <div class="badge-section">
+      🏅 <strong>Congratulations!</strong> You’ve unlocked the Emotion Star Badge!
+    </div>
+  {% endif %}
+
+  <a href="/quiz/emotion" class="retry-btn" style="margin-top: 20px;">🔁 Next Question</a>
+</div>
+
+<!-- JS: Answer Logic -->
+<script>
+  const correct = "{{ question.answer }}";
+  function checkAnswer(choice) {
+    const result = document.getElementById("result");
+    if (choice === correct) {
+      result.innerHTML = "✅ Correct!";
+      new Audio("/static/sounds/star.mp3").play();
+      fetch("/quiz/update-score");
+    } else {
+      result.innerHTML = "❌ Oops! Try again!";
+    }
+  }
+
+  function selectAnswer(index) {
+    const buttons = document.querySelectorAll(".option-btn");
+    if (buttons[index]) buttons[index].click();
+  }
+</script>
+
+<!-- Gesture Detection Libraries -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<script>
+  const videoElement = document.getElementById('input_video');
+  const canvasElement = document.getElementById('output_canvas');
+  const canvasCtx = canvasElement.getContext('2d');
+
+  function getFingerCount(landmarks) {
+    const tips = [8, 12, 16, 20];
+    let count = 0;
+    tips.forEach((tip) => {
+      if (landmarks[tip].y < landmarks[tip - 2].y) count++;
+    });
+    return count;
+  }
+
+  function detectGesture(fingerCount) {
+    if (fingerCount === 0) return 'Fist';
+    if (fingerCount === 2) return 'Peace';
+    if (fingerCount === 5) return 'Open Palm';
+    return '';
+  }
+
+  const hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  hands.setOptions({
+    maxNumHands: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+  });
+
+  hands.onResults((results) => {
+    canvasCtx.save();
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+    if (results.multiHandLandmarks.length > 0) {
+      const fingerCount = getFingerCount(results.multiHandLandmarks[0]);
+      const gesture = detectGesture(fingerCount);
+      document.getElementById('detected-gesture').innerText = "Gesture: " + gesture;
+
+      // Auto select
+      if (gesture === 'Fist') selectAnswer(0);
+      if (gesture === 'Peace') selectAnswer(1);
+      if (gesture === 'Open Palm') selectAnswer(2);
+    }
+
+    canvasCtx.restore();
+  });
+
+  const camera = new Camera(videoElement, {
+    onFrame: async () => {
+      await hands.send({ image: videoElement });
+    },
+    width: 640,
+    height: 480
+  });
+
+  function startGestureMode() {
+    document.getElementById('gesture-area').style.display = 'block';
+
+    videoElement.play(); // Important for autoplay policies
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        console.log("Camera access granted");
+        camera.start();
+      })
+      .catch(err => {
+        alert("Camera Error: " + err.message);
+        console.error("Camera access error:", err);
+      });
+
+    videoElement.addEventListener('loadeddata', () => {
+      console.log("Video loaded");
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
+    });
+  }
+
+  function stopGestureMode() {
+    document.getElementById('gesture-area').style.display = 'none';
+    camera.stop();
+    document.getElementById('detected-gesture').innerText = '';
+  }
+</script>
+{% endblock %}

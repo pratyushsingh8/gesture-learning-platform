@@ -1,0 +1,31 @@
+<!-- templates/home.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <h2>🎓 Welcome to LearnWithGestures!</h2>
+  <p>Select an activity below to get started 👇</p>
+
+  <div class="activity-grid">
+    <a href="/games/emotion-quiz" class="activity-card">
+      <img src="{{ url_for('static', filename='images/quiz.png') }}" alt="Emotion Quiz">
+      <h3>Emotion Quiz</h3>
+    </a>
+    
+    </a>
+    <a href="/games/face-match" class="activity-card">
+      <img src="{{ url_for('static', filename='images/emotions/angry.png') }}" alt="Face Match">
+      <h3>Face Matching</h3>
+    </a>
+    
+    <a href="/games/color-match" class="activity-card">
+        <img src="{{ url_for('static', filename='images/fun.png') }}">
+        <h3>Color Match Game</h3>
+    </a>
+      
+    <a href="/progress" class="activity-card">
+      <img src="{{ url_for('static', filename='images/progress.png') }}">
+      <h3>My Progress</h3>
+    </a>
+  </div>
+</div>
+{% endblock %}
