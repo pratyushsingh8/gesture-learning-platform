@@ -1,9 +1,22 @@
-Flask==2.3.3
+
 opencv-python==4.9.0.80
 mediapipe==0.10.9
-numpy==1.24.4
 matplotlib==3.7.3
-Werkzeug==2.2.3
+Werkzeug==3.0.0
 itsdangerous==2.1.2
 Jinja2==3.1.2
 MarkupSafe==2.1.3
+
+Flask==3.0.3
+Flask-SQLAlchemy==3.0.3
+Flask-Migrate==4.0.4
+Flask-Cors==4.0.0
+pillow==10.1.0
+numpy==1.26.0
+python-dotenv==1.0.0
+# Optional - install only if you used TensorFlow
+tensorflow==2.15.0
+# Optional - install only if you used PyTorch
+torch==2.2.0
+# Optional - MediaPipe (for server-side landmark extraction from images)
+
