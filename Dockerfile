@@ -1,34 +1,39 @@
-# Dockerfile (Debian-slim based)
-# Overwrite Dockerfile with the recommended CI-friendly content
-@'
-# Dockerfile - headless OpenCV + Flask (CI-friendly)
+# Dockerfile — use a stable Python 3.10 base to match your requirements
 FROM python:3.10-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-WORKDIR /app
-
-# Install a few system deps often needed for ML/OpenCV packages
+# Install system deps required for Pillow / OpenCV builds and common libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libglib2.0-0 \
+    libsm6 \
+    libxrender1 \
+    libxext6 \
+    libjpeg-dev \
+    zlib1g-dev \
+    libpng-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pip requirements and install Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Create working dir
+WORKDIR /app
 
-# Copy app code
-COPY . .
+# Copy requirements first for better cache use
+COPY requirements.txt /app/requirements.txt
 
+# Upgrade pip and install python deps (prefer binary wheels)
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && pip install --prefer-binary -r requirements.txt
+
+# Copy app files
+COPY . /app
+
+# Expose port expected by Render
 EXPOSE 5000
-CMD ["python", "app.py"]
-'@ | Set-Content -Path Dockerfile -Encoding utf8
 
-# Stage the resolved file
-git add Dockerfile
+# Environment defaults
+ENV FLASK_ENV=production
+ENV PYTHONUNBUFFERED=1
+ENV USE_CAMERA=false
 
-# Continue the rebase
-git rebase --continue
-
-# If rebase finishes successfully, push your branch to remote
-git push origin main
+# Start command (gunicorn)
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "1", "--log-file", "-"]
