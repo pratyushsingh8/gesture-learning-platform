@@ -1,12 +1,12 @@
-# app.py
-# Complete Flask app that includes your existing endpoints plus a Sketch Game
-# with shape recognition (OpenCV heuristic) and sample saving.
+# app.py (patched for Render deployment)
+# Use USE_CAMERA env var to enable local webcam. On Render, leave unset or set false.
 
 import base64
 import io
 import os
 import json
 import random
+import atexit
 from datetime import timedelta
 from PIL import Image as PILImage
 
@@ -35,9 +35,7 @@ os.makedirs(SHAPE_DATA_DIR, exist_ok=True)
 PROGRESS_FILE = "progress.json"
 
 # -------------------- Gesture model (dummy fallback) --------------------
-# This mirrors your existing dummy model so endpoints that call `predict_gesture` keep working.
 if TF_AVAILABLE:
-    # keep a tiny dummy model to avoid crashes if other code expects `model.predict`
     model = Sequential([
         Input(shape=(100, 100, 3), name="input_layer"),
         Flatten(),
@@ -79,23 +77,49 @@ def load_user_progress(user_id):
 # -------------------- Flask app --------------------
 app = Flask(__name__)
 CORS(app)
-app.secret_key = 'supersecretkey'
+app.secret_key = os.environ.get("FLASK_SECRET", "supersecretkey")
 app.permanent_session_lifetime = timedelta(days=1)
 
-#--------------------- Memory-Matching Game ----------------------------
+# -------------------- Camera control (safe for cloud) --------------------
+# Set environment variable USE_CAMERA=true (or "1") on local machine to enable webcam.
+# On Render (or any server) leave it unset or set to false.
+USE_CAMERA = os.environ.get("USE_CAMERA", "false").lower() in ("1", "true", "yes")
+
+camera = None
+if USE_CAMERA:
+    try:
+        camera = cv2.VideoCapture(0)
+        if not camera.isOpened():
+            print("Warning: camera could not be opened.")
+            camera = None
+        else:
+            print("Local camera initialized.")
+    except Exception as e:
+        camera = None
+        print("Camera initialization failed:", e)
+else:
+    print("Camera disabled (USE_CAMERA is false).")
+
+@atexit.register
+def _release_camera():
+    try:
+        if camera is not None:
+            camera.release()
+            print("Camera released at exit.")
+    except Exception:
+        pass
+
+# -------------------- Memory-Matching and other pages ----------------------------
 @app.route("/games/memory")
 def memory_game():
     return render_template("memory_game.html")
 
-#--------------------- Gesture Simon Says ------------------------------
 @app.route("/games/simon-says")
 def simon_says():
     return render_template("simon_says.html")
 
-
 # -------------------- Utility: base64 -> cv2 image --------------------
 def b64_to_cv2(img_b64):
-    # img_b64 may be 'data:image/png;base64,...' or just base64 body
     if ',' in img_b64:
         header, encoded = img_b64.split(',', 1)
     else:
@@ -105,19 +129,16 @@ def b64_to_cv2(img_b64):
     img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise ValueError("Could not decode image")
-    # convert RGBA to BGR if necessary
     if img.ndim == 3 and img.shape[2] == 4:
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
     return img
 
 # -------------------- Simple gesture-prediction stub --------------------
-# (Kept for compatibility with your existing video feed endpoints)
 class_labels = ['one', 'two', 'three', 'four', 'thumbs_down', 'stop', 'nothing']
 
 def predict_gesture(frame):
     # frame: BGR image (numpy)
     if model is None:
-        # fallback: simple heuristic — return 'nothing' to avoid noisy predictions
         return 'nothing'
     img = cv2.resize(frame, (100, 100))
     img = img.astype('float32') / 255.0
@@ -126,14 +147,29 @@ def predict_gesture(frame):
     gesture = class_labels[np.argmax(preds)]
     return gesture
 
-# -------------------- Video feed (existing) --------------------
-camera = cv2.VideoCapture(0)
-
+# -------------------- Video feed generator --------------------
 def gen_frames():
+    # If no camera (e.g., running on Render), provide a stable blank frame so endpoint works.
+    if camera is None:
+        blank = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.putText(blank, 'Camera disabled on server', (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
+        ret, buffer = cv2.imencode('.jpg', blank)
+        frame_bytes = buffer.tobytes()
+        while True:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+    # Camera is available (local/dev)
     while True:
         success, frame = camera.read()
         if not success:
-            break
+            # If camera failed mid-run, yield a blank frame to keep stream alive
+            blank = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(blank, 'Camera read failed', (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
+            ret, buffer = cv2.imencode('.jpg', blank)
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            continue
         frame = cv2.flip(frame, 1)
         gesture = predict_gesture(frame)
         cv2.putText(frame, f'Gesture: {gesture}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
@@ -176,17 +212,14 @@ def recognize_shape():
     except Exception as e:
         return jsonify({'error': 'bad image', 'detail': str(e)}), 400
 
-    # Convert to grayscale and threshold. Assume white background, dark strokes.
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (7,7), 0)
     _, th = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # find contours
     contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return jsonify({})
 
-    # choose largest contour
     c = max(contours, key=cv2.contourArea)
     area = cv2.contourArea(c)
     if area < 1000:
@@ -202,7 +235,6 @@ def recognize_shape():
     shape = 'unknown'
     params = {}
 
-    # circularity
     circularity = (4 * np.pi * area) / (peri*peri + 1e-9)
 
     if len(approx) == 3:
@@ -219,7 +251,6 @@ def recognize_shape():
             (cx,cy), radius = cv2.minEnclosingCircle(c)
             params = {'cx': cx/W, 'cy': cy/H, 'r': radius / max(W,H)}
         else:
-            # fallback polygon/unknown
             if len(approx) > 4 and len(approx) < 10:
                 shape = 'polygon'
                 params = {'x': norm_x, 'y': norm_y, 'w': norm_w, 'h': norm_h}
@@ -228,7 +259,7 @@ def recognize_shape():
 
     return jsonify({'shape': shape, 'params': params})
 
-# -------------------- Existing example endpoints from your app --------------------
+# -------------------- Other app endpoints --------------------
 @app.route('/api/meta', methods=['GET'])
 def meta():
     return jsonify({"project":"Gesture Learning Demo","version":"1.0","status":"running"})
@@ -263,7 +294,7 @@ def save_data_landmarks():
         json.dump({'landmarks': landmarks, 'label': label}, f)
     return jsonify({'message': 'Sample saved', 'filepath': filepath}), 200
 
-# Video feed endpoints (keeps your previous functionality)
+# Video feed endpoints
 @app.route('/')
 def index():
     return render_template('home.html')
@@ -274,10 +305,8 @@ def video_feed():
 
 @app.route('/get_gesture')
 def get_gesture():
-    # simple placeholder
     return jsonify({'gesture': 'none'})
 
-# Gesture control which accepts an uploaded frame (keeps previous contract)
 @app.route('/gesture_control', methods=['POST'])
 def gesture_control_file():
     if 'frame' not in request.files:
@@ -288,7 +317,7 @@ def gesture_control_file():
     gesture = predict_gesture(img)
     return jsonify({'gesture': gesture})
 
-# -------------------- Math & emotion quiz endpoints (kept from your app) --------------------
+# -------------------- Math & emotion quiz endpoints --------------------
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5)
 
@@ -348,11 +377,9 @@ def emotion_submit():
         session['score'] = session.get('score', 0) + 1
     return redirect(url_for('emotion_quiz'))
 
-# -------------------- Additional page endpoints required by templates --------------------
+# Additional page endpoints required by templates
 @app.route('/gesture')
 def gesture_page():
-    # If you want a full page explaining gestures, create templates/gesture.html
-    # For now attempt to render gesture.html if available, otherwise return simple message.
     try:
         return render_template('gesture.html')
     except Exception:
@@ -365,7 +392,6 @@ def progress_page():
     try:
         return render_template('progress.html', user=user_data)
     except Exception:
-        # fallback: return JSON if template missing
         return jsonify(user_data)
 
 @app.route('/games/face-match')
@@ -396,7 +422,6 @@ def color_match():
     ]
     target_color = random.choice(colors)
     options = random.sample(colors, 3)
-    # ensure target present
     if target_color not in options:
         options[random.randint(0, 2)] = target_color
     try:
@@ -422,12 +447,19 @@ def activities():
     except Exception:
         return "<h3>Activities</h3><p>Various activities will appear here.</p>"
 
-# -------------------- Run --------------------
+# -------------------- Health endpoint --------------------
+@app.route('/health')
+def health():
+    return 'ok', 200
+
+# -------------------- Run (for local development) --------------------
 if __name__ == '__main__':
     try:
-        app.run(debug=True)
+        # If you want to enable camera locally, run with USE_CAMERA=true
+        app.run(host='0.0.0.0', port=5000, debug=True)
     finally:
         try:
-            camera.release()
+            if camera is not None:
+                camera.release()
         except Exception:
             pass
