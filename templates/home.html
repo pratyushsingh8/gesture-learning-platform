@@ -173,30 +173,4 @@
     </a>
   </div>
 </div>
-<!-- =============================== -->
-<!-- Webcam + Gesture Detection Area -->
-<!-- =============================== -->
-
-<div style="margin-top: 30px;">
-  <h2>🖐 Try It Now: Live Gesture Detection</h2>
-  <p>Your hand will be recognised in real-time using MediaPipe in the browser.</p>
-
-  <video id="input_video" 
-         style="width: 640px; height: 480px; border-radius: 12px; background: #000;" 
-         autoplay muted playsinline></video>
-
-  <div id="gesture_status" 
-       style="margin-top: 10px; font-size: 1.2rem; font-weight: bold;">
-      Gesture: —
-  </div>
-</div>
-
-<!-- MediaPipe Scripts (JS version) -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-
-<!-- Your client-side detection script -->
-<script src="/static/js/mediapipe_client.js"></script>
-
 {% endblock %}
