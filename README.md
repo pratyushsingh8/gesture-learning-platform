@@ -45,11 +45,10 @@ docker run -p 5000:5000 gesture-app
 <img width="1896" height="903" alt="image" src="https://github.com/user-attachments/assets/c2650952-09fd-4daf-a56b-824d286c0ae7" />
 
 
-🪄 Author
+🪄 Author & Contributor
 
-Pratyush Kumar Singh
-AI & Software Engineer | Flask | TensorFlow | CI/CD Enthusiast
-[GitHub](https://github.com/pratyushsingh8)
+Pratyush Kumar Singh\
+Prattoy Dey
 
 
 Commit and push:
