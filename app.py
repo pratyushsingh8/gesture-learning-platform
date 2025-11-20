@@ -15,7 +15,16 @@ from flask_cors import CORS
 
 import cv2
 import numpy as np
-import mediapipe as mp
+# Try to import mediapipe (server may not have it); fall back gracefully.
+try:
+    import mediapipe as mp
+    MP_AVAILABLE = True
+    print("MediaPipe available on server")
+except Exception as e:
+    mp = None
+    MP_AVAILABLE = False
+    print("MediaPipe not available on server:", e)
+
 
 # Optional: TensorFlow is used elsewhere in your app; keep imports ready
 try:
@@ -275,8 +284,32 @@ def create_user():
 
 @app.route('/api/gesture/predict', methods=['POST'])
 def gesture_predict():
+    """
+    Accepts JSON:
+    - {"label": "thumbs_up"}  OR
+    - {"landmarks": [...]}  OR
+    - (if client sends images) {"image": "data:image/png;base64,..."}  (not used here)
+    Returns JSON: { "label": "...", "source": "client" } or processed result.
+    """
     data = request.get_json() or {}
-    return jsonify({"received": data, "prediction": {"label": "none", "scores": {}}})
+    # If client sent a precomputed label:
+    if 'label' in data:
+        return jsonify({"label": data['label'], "source": "client"})
+
+    # If client sent landmarks and you want server-side logic:
+    if 'landmarks' in data:
+        landmarks = data['landmarks']
+        # you could implement a classifier using landmarks here
+        # For now, return the raw landmarks as an acknowledgement:
+        return jsonify({"label": "from_landmarks", "landmark_count": len(landmarks), "source": "client_landmarks"})
+
+    # Fallback if server has mediapipe and image processing is desired:
+    if MP_AVAILABLE and 'image' in data:
+        # (optional) decode image and run mediapipe server-side
+        # left as future work
+        return jsonify({"error": "server-side image processing not implemented"}), 501
+
+    return jsonify({"error": "no valid input provided"}), 400
 
 @app.route('/api/data/save', methods=['POST'])
 def save_data_landmarks():
@@ -318,8 +351,17 @@ def gesture_control_file():
     return jsonify({'gesture': gesture})
 
 # -------------------- Math & emotion quiz endpoints --------------------
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5)
+if MP_AVAILABLE:
+    mp_hands = mp.solutions.hands
+    hands = mp_hands.Hands(
+        static_image_mode=False,
+        max_num_hands=1,
+        min_detection_confidence=0.5
+    )
+else:
+    mp_hands = None
+    hands = None
+    print("MediaPipe HANDS disabled on server (MP_AVAILABLE=False)")
 
 @app.route('/api/new_math_question')
 def new_math_question():
