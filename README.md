@@ -48,8 +48,7 @@ docker run -p 5000:5000 gesture-app
 🪄 Author
 
 Pratyush Kumar Singh
-AI & Software Engineer | Flask | TensorFlow | CI/CD Enthusiast
-[GitHub](https://github.com/pratyushsingh8)
+Prattoy Dey
 
 
 Commit and push:
