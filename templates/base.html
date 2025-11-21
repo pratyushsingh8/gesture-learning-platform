@@ -51,10 +51,10 @@
       <a href="{{ url_for('math_quiz') }}" class="{% if request.path.startswith('/games/math_quiz') %}active{% endif %}">Math Quiz</a>
 
       <!-- use literal path for routes that may not have matching endpoint names -->
-      <a href="/gesture" class="{% if request.path.startswith('/gesture') %}active{% endif %}">Learn Gesture</a>
+      <!--<a href="/gesture" class="{% if request.path.startswith('/gesture') %}active{% endif %}">Learn Gesture</a>
 
-      <a href="{{ url_for('activities') }}" class="{% if request.path.startswith('/activities') %}active{% endif %}">Activities</a>
-
+      <a href="{{ url_for('activities') }}" class="{% if request.path.startswith('/activities') %}active{% endif %}">Activities</a>-->
+    
       <!-- literal path for progress to avoid BuildError until you confirm endpoint name -->
       <a href="/progress" class="{% if request.path.startswith('/progress') %}active{% endif %}">Progress</a>
     </nav>
